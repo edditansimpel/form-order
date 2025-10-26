@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="id" x-data="{ 
+    darkMode: localStorage.getItem('darkMode') === 'true', 
+    isLoading: true,
+    init() {
+        // Set dark mode from localStorage
+        this.darkMode = localStorage.getItem('darkMode') === 'true';
+        
+        // Watch for dark mode changes and save to localStorage
+        this.$watch('darkMode', (value) => {
+            localStorage.setItem('darkMode', value);
+            if (value) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+        
+        // Initialize dark mode class
+        if (this.darkMode) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        // Hide loading after page loads
+        setTimeout(() => {
+            this.isLoading = false;
+        }, 1000);
+    }
+}" :class="{ 'dark': darkMode }" x-init="init()">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pendataan Pesanan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Loading spinner */
+        .spinner {
+            border-top-color: #3b82f6;
+            animation: spinner 1.5s linear infinite;
+        }
+        
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Dark mode fixes */
+        .dark {
+            color-scheme: dark;
+        }
+        
+        /* Sortable styles */
+        .sortable-ghost {
+            opacity: 0.4;
+        }
+        
+        .sortable-drag {
+            cursor: move;
+        }
+        
+        .drop-zone {
+            min-height: 100px;
+            transition: all 0.3s ease;
+        }
+        
+        .drop-zone.drag-over {
+            background-color: rgba(59, 130, 246, 0.1);
+            border: 2px dashed #3b82f6;
+        }
+        
+        .dragging {
+            cursor: move;
+            opacity: 0.5;
+        }
+        
+        /* Order card styles */
+        .order-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid;
+        }
+        
+        .order-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        /* Status colors - Light mode */
+        .status-masuk {
+            border-left-color: #ef4444;
+            background-color: #fef2f2;
+        }
+        
+        .status-proses {
+            border-left-color: #f59e0b;
+            background-color: #fffbeb;
+        }
+        
+        .status-cek {
+            border-left-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        .status-finish {
+            border-left-color: #10b981;
+            background-color: #f0fdf4;
+        }
+        
+        /* Status colors - Dark mode */
+        .dark .status-masuk {
+            background-color: #7f1d1d;
+            color: #fca5a5;
+        }
+        
+        .dark .status-proses {
+            background-color: #78350f;
+            color: #fcd34d;
+        }
+        
+        .dark .status-cek {
+            background-color: #1e3a8a;
+            color: #93c5fd;
+        }
+        
+        .dark .status-finish {
+            background-color: #064e3b;
+            color: #86efac;
+        }
+        
+        /* Empty state - no drag */
+        .empty-state {
+            pointer-events: none;
+            user-select: none;
+        }
+        
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+        }
+        
+        /* Mobile responsive fixes */
+        @media (max-width: 768px) {
+            .board-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .board-columns {
+                min-width: 800px;
+            }
+            
+            .chart-container {
+                height: 200px;
+            }
+        }
+        
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .dark .loading-overlay {
+            background-color: rgba(17, 24, 39, 0.9);
+        }
+        
+        /* Mobile menu button */
+        .mobile-menu-button {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .mobile-menu-button {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+    <!-- Loading Overlay -->
+    <div x-show="isLoading" class="loading-overlay" x-cloak>
+        <div class="text-center">
+            <div class="spinner border-4 border-blue-200 rounded-full w-12 h-12 mx-auto"></div>
+            <p class="mt-4 text-gray-700 dark:text-gray-300 font-medium">Memuat aplikasi...</p>
+        </div>
+    </div>
+
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+                <div class="flex items-center">
+                    <i class="fas fa-clipboard-list text-primary-600 dark:text-primary-400 text-xl sm:text-2xl mr-2 sm:mr-3"></i>
+                    <h1 class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">Sistem Pesanan</h1>
+                </div>
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <button @click="darkMode = !darkMode" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <i x-show="!darkMode" class="fas fa-moon text-sm sm:text-base"></i>
+                        <i x-show="darkMode" class="fas fa-sun text-sm sm:text-base"></i>
+                    </button>
+                    <button @click="exportToExcel()" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm">
+                        <i class="fas fa-file-excel mr-1 sm:mr-2"></i> <span class="hidden sm:inline">Export</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 w-full">
+            <!-- Board Layout untuk Drag and Drop -->
+            <div x-data="{ 
+                activeTab: 'board',
+                orders: [],
+                showModal: false,
+                editingOrder: null,
+                showDetailsModal: false,
+                selectedOrder: null,
+                showChartsModal: false,
+                charts: {},
+                fetchOrders() {
+                    fetch('/api/orders')
+                        .then(response => response.json())
+                        .then(data => {
+                            this.orders = data;
+                            this.initializeSortable();
+                            this.updateCharts();
+                        })
+                        .catch(error => console.error('Error fetching orders:', error));
+                },
+                initializeSortable() {
+                    this.$nextTick(() => {
+                        // Initialize Sortable for each status column
+                        const statuses = ['masuk', 'proses', 'cek', 'finish'];
+                        statuses.forEach(status => {
+                            const column = document.getElementById(`column-${status}`);
+                            if (column) {
+                                // Only make order cards draggable, not the empty state
+                                new Sortable(column, {
+                                    group: 'orders',
+                                    animation: 150,
+                                    ghostClass: 'sortable-ghost',
+                                    dragClass: 'sortable-drag',
+                                    handle: '.order-card', // Only allow dragging from order cards
+                                    filter: '.empty-state', // Prevent dragging empty state
+                                    onEnd: (evt) => {
+                                        const orderId = parseInt(evt.item.dataset.orderId);
+                                        const newStatus = evt.to.dataset.status;
+                                        this.updateOrderStatus(orderId, newStatus);
+                                    }
+                                });
+                            }
+                        });
+                    });
+                },
+                updateOrderStatus(orderId, newStatus) {
+                    const order = this.orders.find(o => o.id === orderId);
+                    if (!order) return;
+                    
+                    const orderData = {
+                        ...order,
+                        status: newStatus
+                    };
+                    
+                    // Set appropriate date based on new status
+                    const today = new Date().toISOString().split('T')[0];
+                    if (newStatus === 'proses') {
+                        orderData.entry_date = orderData.entry_date || today;
+                    } else if (newStatus === 'cek') {
+                        orderData.cek_date = today;
+                    } else if (newStatus === 'finish') {
+                        orderData.finish_date = today;
+                    }
+                    
+                    fetch(`/api/orders/${orderId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(orderData)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        this.fetchOrders();
+                        this.showNotification(`Pesanan berhasil dipindahkan ke tahap ${newStatus}`, 'success');
+                    })
+                    .catch(error => {
+                        console.error('Error updating order status:', error);
+                        this.showNotification('Gagal memindahkan pesanan', 'error');
+                    });
+                },
+                saveOrder() {
+                    const orderData = {
+                        order_number: this.editingOrder.order_number,
+                        date: this.editingOrder.date,
+                        rim_quantity: parseInt(this.editingOrder.rim_quantity),
+                        city: this.editingOrder.city,
+                        document_type: this.editingOrder.document_type,
+                        unit_price: parseFloat(this.editingOrder.unit_price),
+                        entry_date: this.editingOrder.entry_date,
+                        print_deadline: this.editingOrder.print_deadline,
+                        notes: this.editingOrder.notes || '',
+                        status: this.editingOrder.status || 'masuk'
+                    };
+
+                    if (this.editingOrder.id) {
+                        // Update existing order
+                        fetch(`/api/orders/${this.editingOrder.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(orderData)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            this.fetchOrders();
+                            this.showModal = false;
+                            this.showNotification('Pesanan berhasil diperbarui', 'success');
+                        })
+                        .catch(error => {
+                            console.error('Error updating order:', error);
+                            this.showNotification('Gagal memperbarui pesanan', 'error');
+                        });
+                    } else {
+                        // Add new order
+                        fetch('/api/orders', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(orderData)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            this.fetchOrders();
+                            this.showModal = false;
+                            this.showNotification('Pesanan berhasil ditambahkan', 'success');
+                        })
+                        .catch(error => {
+                            console.error('Error adding order:', error);
+                            this.showNotification('Gagal menambah pesanan', 'error');
+                        });
+                    }
+                },
+                deleteOrder(orderId) {
+                    if (confirm('Apakah Anda yakin ingin menghapus pesanan ini?')) {
+                        fetch(`/api/orders/${orderId}`, {
+                            method: 'DELETE'
+                        })
+                        .then(() => {
+                            this.fetchOrders();
+                            this.showNotification('Pesanan berhasil dihapus', 'success');
+                        })
+                        .catch(error => {
+                            console.error('Error deleting order:', error);
+                            this.showNotification('Gagal menghapus pesanan', 'error');
+                        });
+                    }
+                },
+                showDetails(order) {
+                    this.selectedOrder = order;
+                    this.showDetailsModal = true;
+                },
+                showNotification(message, type) {
+                    // Create notification element
+                    const notification = document.createElement('div');
+                    notification.className = `fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg text-white text-sm ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} transition-opacity duration-300 z-50`;
+                    notification.textContent = message;
+                    document.body.appendChild(notification);
+                    
+                    // Remove notification after 3 seconds
+                    setTimeout(() => {
+                        notification.style.opacity = '0';
+                        setTimeout(() => {
+                            if (document.body.contains(notification)) {
+                                document.body.removeChild(notification);
+                            }
+                        }, 300);
+                    }, 3000);
+                },
+                moveToNextStatus(orderId, newStatus) {
+                    this.updateOrderStatus(orderId, newStatus);
+                },
+                exportToExcel() {
+                    window.location.href = '/api/export/excel';
+                },
+                showCharts() {
+                    this.activeTab = 'charts';
+                    this.showChartsModal = true;
+                    this.$nextTick(() => {
+                        this.updateCharts();
+                    });
+                },
+                updateCharts() {
+                    if (!this.showChartsModal) return;
+                    
+                    // Prepare data for charts
+                    const statusCounts = {
+                        masuk: this.orders.filter(o => o.status === 'masuk').length,
+                        proses: this.orders.filter(o => o.status === 'proses').length,
+                        cek: this.orders.filter(o => o.status === 'cek').length,
+                        finish: this.orders.filter(o => o.status === 'finish').length
+                    };
+                    
+                    const cityData = {};
+                    const documentTypeData = {};
+                    const monthlyData = {};
+                    
+                    this.orders.forEach(order => {
+                        // City data
+                        cityData[order.city] = (cityData[order.city] || 0) + 1;
+                        
+                        // Document type data
+                        documentTypeData[order.document_type] = (documentTypeData[order.document_type] || 0) + 1;
+                        
+                        // Monthly data
+                        if (order.date) {
+                            const month = order.date.substring(0, 7); // YYYY-MM
+                            monthlyData[month] = (monthlyData[month] || 0) + 1;
+                        }
+                    });
+                    
+                    // Status distribution chart
+                    const statusCtx = document.getElementById('statusChart');
+                    if (statusCtx && this.charts.status) {
+                        this.charts.status.destroy();
+                    }
+                    if (statusCtx) {
+                        this.charts.status = new Chart(statusCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['Pesanan Masuk', 'Pesanan Diproses', 'Pesanan Dicek', 'Pesanan Selesai'],
+                                datasets: [{
+                                    data: [statusCounts.masuk, statusCounts.proses, statusCounts.cek, statusCounts.finish],
+                                    backgroundColor: [
+                                        '#ef4444',
+                                        '#f59e0b',
+                                        '#3b82f6',
+                                        '#10b981'
+                                    ],
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Distribusi Status Pesanan',
+                                        color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // City distribution chart
+                    const cityCtx = document.getElementById('cityChart');
+                    if (cityCtx && this.charts.city) {
+                        this.charts.city.destroy();
+                    }
+                    if (cityCtx) {
+                        this.charts.city = new Chart(cityCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: Object.keys(cityData),
+                                datasets: [{
+                                    label: 'Jumlah Pesanan',
+                                    data: Object.values(cityData),
+                                    backgroundColor: '#3b82f6',
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Pesanan berdasarkan Kota',
+                                        color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            precision: 0,
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    },
+                                    x: {
+                                        ticks: {
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Document type chart
+                    const documentCtx = document.getElementById('documentChart');
+                    if (documentCtx && this.charts.document) {
+                        this.charts.document.destroy();
+                    }
+                    if (documentCtx) {
+                        this.charts.document = new Chart(documentCtx, {
+                            type: 'pie',
+                            data: {
+                                labels: Object.keys(documentTypeData),
+                                datasets: [{
+                                    data: Object.values(documentTypeData),
+                                    backgroundColor: [
+                                        '#8b5cf6',
+                                        '#ec4899',
+                                        '#f97316',
+                                        '#06b6d4',
+                                        '#84cc16'
+                                    ],
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Pesanan berdasarkan Jenis Dokumen',
+                                        color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Monthly trend chart
+                    const monthlyCtx = document.getElementById('monthlyChart');
+                    if (monthlyCtx && this.charts.monthly) {
+                        this.charts.monthly.destroy();
+                    }
+                    if (monthlyCtx) {
+                        this.charts.monthly = new Chart(monthlyCtx, {
+                            type: 'line',
+                            data: {
+                                labels: Object.keys(monthlyData).sort(),
+                                datasets: [{
+                                    label: 'Jumlah Pesanan',
+                                    data: Object.keys(monthlyData).sort().map(month => monthlyData[month]),
+                                    borderColor: '#10b981',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    borderWidth: 2,
+                                    fill: true,
+                                    tension: 0.4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Trend Pesanan Bulanan',
+                                        color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            precision: 0,
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    },
+                                    x: {
+                                        ticks: {
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Revenue by status chart
+                    const revenueData = {
+                        masuk: this.orders.filter(o => o.status === 'masuk').reduce((sum, o) => sum + o.total_price, 0),
+                        proses: this.orders.filter(o => o.status === 'proses').reduce((sum, o) => sum + o.total_price, 0),
+                        cek: this.orders.filter(o => o.status === 'cek').reduce((sum, o) => sum + o.total_price, 0),
+                        finish: this.orders.filter(o => o.status === 'finish').reduce((sum, o) => sum + o.total_price, 0)
+                    };
+                    
+                    const revenueCtx = document.getElementById('revenueChart');
+                    if (revenueCtx && this.charts.revenue) {
+                        this.charts.revenue.destroy();
+                    }
+                    if (revenueCtx) {
+                        this.charts.revenue = new Chart(revenueCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['Pesanan Masuk', 'Pesanan Diproses', 'Pesanan Dicek', 'Pesanan Selesai'],
+                                datasets: [{
+                                    label: 'Total Pendapatan (Rp)',
+                                    data: [revenueData.masuk, revenueData.proses, revenueData.cek, revenueData.finish],
+                                    backgroundColor: [
+                                        '#ef4444',
+                                        '#f59e0b',
+                                        '#3b82f6',
+                                        '#10b981'
+                                    ],
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Pendapatan berdasarkan Status Pesanan',
+                                        color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            callback: function(value) {
+                                                return 'Rp ' + value.toLocaleString('id-ID');
+                                            },
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    },
+                                    x: {
+                                        ticks: {
+                                            color: document.documentElement.classList.contains('dark') ? '#e5e7eb' : '#374151'
+                                        },
+                                        grid: {
+                                            color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }" x-init="fetchOrders()" class="space-y-4 sm:space-y-6">
+                <!-- Navigation Tabs -->
+                <div class="border-b border-gray-200 dark:border-gray-700 mb-4 sm:mb-6">
+                    <nav class="-mb-px flex space-x-2 sm:space-x-8 overflow-x-auto">
+                        <button @click="activeTab = 'board'" :class="{ 'border-primary-500 text-primary-600 dark:text-primary-400': activeTab === 'board', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300': activeTab !== 'board' }" class="py-3 sm:py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                            <i class="fas fa-th-large mr-1 sm:mr-2"></i> <span class="hidden sm:inline">Board</span> Pesanan
+                        </button>
+                        <button @click="showCharts()" :class="{ 'border-primary-500 text-primary-600 dark:text-primary-400': activeTab === 'charts', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300': activeTab !== 'charts' }" class="py-3 sm:py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap">
+                            <i class="fas fa-chart-bar mr-1 sm:mr-2"></i> <span class="hidden sm:inline">Rekap</span> Data
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Board View -->
+                <div x-show="activeTab === 'board'" class="space-y-4 sm:space-y-6">
+                    <!-- Tambah Pesanan Button -->
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg sm:text-xl font-semibold">Board Pesanan</h2>
+                        <button @click="showModal = true; editingOrder = { 
+                            order_number: '', 
+                            date: new Date().toISOString().split('T')[0], 
+                            rim_quantity: 0, 
+                            city: '', 
+                            document_type: '', 
+                            unit_price: 0, 
+                            entry_date: new Date().toISOString().split('T')[0], 
+                            print_deadline: '', 
+                            notes: '',
+                            status: 'masuk'
+                        }" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center text-sm">
+                            <i class="fas fa-plus mr-1 sm:mr-2"></i> <span class="hidden sm:inline">Tambah</span> Pesanan
+                        </button>
+                    </div>
+
+                    <!-- Board Columns -->
+                    <div class="board-container">
+                        <div class="board-columns grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                            <!-- Pesanan Masuk Column -->
+                            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+                                <div class="flex justify-between items-center mb-3 sm:mb-4">
+                                    <h3 class="font-semibold text-gray-800 dark:text-white text-sm sm:text-base">Pesanan Masuk</h3>
+                                    <span class="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-xs font-semibold px-2 py-1 rounded-full" x-text="orders.filter(o => o.status === 'masuk').length"></span>
+                                </div>
+                                <div id="column-masuk" class="drop-zone space-y-2 sm:space-y-3" data-status="masuk">
+                                    <template x-for="order in orders.filter(o => o.status === 'masuk')" :key="order.id">
+                                        <div class="order-card status-masuk rounded-lg p-3 sm:p-4 shadow cursor-move" draggable="true" :data-order-id="order.id">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <h4 class="font-medium text-gray-900 dark:text-white text-sm" x-text="order.order_number"></h4>
+                                                <div class="flex space-x-1">
+                                                    <button @click="editingOrder = {...order}; showModal = true" class="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300" title="Edit Pesanan">
+                                                        <i class="fas fa-edit text-xs"></i>
+                                                    </button>
+                                                    <button @click="deleteOrder(order.id)" class="text-red-600 hover:text-red-900" title="Hapus Pesanan">
+                                                        <i class="fas fa-trash text-xs"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-calendar-day mr-1"></i> <span x-text="order.date"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-map-marker-alt mr-1"></i> <span x-text="order.city"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-2">
+                                                <i class="fas fa-file-alt mr-1"></i> <span x-text="order.document_type"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                    <span x-text="order.rim_quantity"></span> RIM
+                                                </div>
+                                                <div class="text-xs sm:text-sm font-semibold text-primary-600 dark:text-primary-400">
+                                                    Rp <span x-text="Number(order.total_price).toLocaleString('id-ID')"></span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 sm:mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                <button @click="showDetails(order)" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                    <i class="fas fa-info-circle mr-1"></i> Detail
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="orders.filter(o => o.status === 'masuk').length === 0" class="empty-state text-center py-3 sm:py-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                        Tidak ada pesanan
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pesanan Diproses Column -->
+                            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+                                <div class="flex justify-between items-center mb-3 sm:mb-4">
+                                    <h3 class="font-semibold text-gray-800 dark:text-white text-sm sm:text-base">Pesanan Diproses</h3>
+                                    <span class="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2 py-1 rounded-full" x-text="orders.filter(o => o.status === 'proses').length"></span>
+                                </div>
+                                <div id="column-proses" class="drop-zone space-y-2 sm:space-y-3" data-status="proses">
+                                    <template x-for="order in orders.filter(o => o.status === 'proses')" :key="order.id">
+                                        <div class="order-card status-proses rounded-lg p-3 sm:p-4 shadow cursor-move" draggable="true" :data-order-id="order.id">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <h4 class="font-medium text-gray-900 dark:text-white text-sm" x-text="order.order_number"></h4>
+                                                <div class="flex space-x-1">
+                                                    <button @click="editingOrder = {...order}; showModal = true" class="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300" title="Edit Pesanan">
+                                                        <i class="fas fa-edit text-xs"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-calendar-day mr-1"></i> <span x-text="order.date"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-map-marker-alt mr-1"></i> <span x-text="order.city"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-2">
+                                                <i class="fas fa-file-alt mr-1"></i> <span x-text="order.document_type"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                    <span x-text="order.rim_quantity"></span> RIM
+                                                </div>
+                                                <div class="text-xs sm:text-sm font-semibold text-primary-600 dark:text-primary-400">
+                                                    Rp <span x-text="Number(order.total_price).toLocaleString('id-ID')"></span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 sm:mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                <button @click="moveToNextStatus(order.id, 'cek')" class="w-full text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/40 py-1 rounded transition-colors mb-1">
+                                                    <i class="fas fa-arrow-right mr-1"></i> ke CEK
+                                                </button>
+                                                <button @click="showDetails(order)" class="w-full text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                    <i class="fas fa-info-circle mr-1"></i> Detail
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="orders.filter(o => o.status === 'proses').length === 0" class="empty-state text-center py-3 sm:py-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                        Tidak ada pesanan
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pesanan Dicek Column -->
+                            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+                                <div class="flex justify-between items-center mb-3 sm:mb-4">
+                                    <h3 class="font-semibold text-gray-800 dark:text-white text-sm sm:text-base">Pesanan Dicek</h3>
+                                    <span class="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2 py-1 rounded-full" x-text="orders.filter(o => o.status === 'cek').length"></span>
+                                </div>
+                                <div id="column-cek" class="drop-zone space-y-2 sm:space-y-3" data-status="cek">
+                                    <template x-for="order in orders.filter(o => o.status === 'cek')" :key="order.id">
+                                        <div class="order-card status-cek rounded-lg p-3 sm:p-4 shadow cursor-move" draggable="true" :data-order-id="order.id">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <h4 class="font-medium text-gray-900 dark:text-white text-sm" x-text="order.order_number"></h4>
+                                                <div class="flex space-x-1">
+                                                    <button @click="editingOrder = {...order}; showModal = true" class="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300" title="Edit Pesanan">
+                                                        <i class="fas fa-edit text-xs"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-calendar-day mr-1"></i> <span x-text="order.date"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-map-marker-alt mr-1"></i> <span x-text="order.city"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-2">
+                                                <i class="fas fa-file-alt mr-1"></i> <span x-text="order.document_type"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                    <span x-text="order.rim_quantity"></span> RIM
+                                                </div>
+                                                <div class="text-xs sm:text-sm font-semibold text-primary-600 dark:text-primary-400">
+                                                    Rp <span x-text="Number(order.total_price).toLocaleString('id-ID')"></span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 sm:mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                <button @click="moveToNextStatus(order.id, 'finish')" class="w-full text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800/40 py-1 rounded transition-colors mb-1">
+                                                    <i class="fas fa-check mr-1"></i> Selesai
+                                                </button>
+                                                <button @click="showDetails(order)" class="w-full text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                    <i class="fas fa-info-circle mr-1"></i> Detail
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="orders.filter(o => o.status === 'cek').length === 0" class="empty-state text-center py-3 sm:py-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                        Tidak ada pesanan
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pesanan Selesai Column -->
+                            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+                                <div class="flex justify-between items-center mb-3 sm:mb-4">
+                                    <h3 class="font-semibold text-gray-800 dark:text-white text-sm sm:text-base">Pesanan Selesai</h3>
+                                    <span class="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-semibold px-2 py-1 rounded-full" x-text="orders.filter(o => o.status === 'finish').length"></span>
+                                </div>
+                                <div id="column-finish" class="drop-zone space-y-2 sm:space-y-3" data-status="finish">
+                                    <template x-for="order in orders.filter(o => o.status === 'finish')" :key="order.id">
+                                        <div class="order-card status-finish rounded-lg p-3 sm:p-4 shadow cursor-move" :data-order-id="order.id">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <h4 class="font-medium text-gray-900 dark:text-white text-sm" x-text="order.order_number"></h4>
+                                                <div class="flex space-x-1">
+                                                    <button @click="editingOrder = {...order}; showModal = true" class="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300" title="Edit Pesanan">
+                                                        <i class="fas fa-edit text-xs"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-calendar-day mr-1"></i> <span x-text="order.date"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">
+                                                <i class="fas fa-map-marker-alt mr-1"></i> <span x-text="order.city"></span>
+                                            </div>
+                                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-2">
+                                                <i class="fas fa-file-alt mr-1"></i> <span x-text="order.document_type"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                    <span x-text="order.rim_quantity"></span> RIM
+                                                </div>
+                                                <div class="text-xs sm:text-sm font-semibold text-primary-600 dark:text-primary-400">
+                                                    Rp <span x-text="Number(order.total_price).toLocaleString('id-ID')"></span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 sm:mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                <button @click="showDetails(order)" class="w-full text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                                    <i class="fas fa-info-circle mr-1"></i> Detail
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="orders.filter(o => o.status === 'finish').length === 0" class="empty-state text-center py-3 sm:py-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                        Tidak ada pesanan
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Modal -->
+                <div x-show="showChartsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50" x-cloak>
+                    <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto m-4">
+                        <div class="p-4 sm:p-6">
+                            <div class="flex justify-between items-center pb-3">
+                                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Rekap Data Pesanan</h3>
+                                <button @click="showChartsModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Summary Cards -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                <div class="bg-red-50 dark:bg-red-900/20 p-3 sm:p-4 rounded-lg border border-red-200 dark:border-red-800">
+                                    <div class="text-xs sm:text-sm font-medium text-red-800 dark:text-red-300">Total Pesanan Masuk</div>
+                                    <div class="text-xl sm:text-2xl font-bold text-red-600 dark:text-red-400" x-text="orders.filter(o => o.status === 'masuk').length"></div>
+                                </div>
+                                <div class="bg-yellow-50 dark:bg-yellow-900/20 p-3 sm:p-4 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                    <div class="text-xs sm:text-sm font-medium text-yellow-800 dark:text-yellow-300">Total Pesanan Diproses</div>
+                                    <div class="text-xl sm:text-2xl font-bold text-yellow-600 dark:text-yellow-400" x-text="orders.filter(o => o.status === 'proses').length"></div>
+                                </div>
+                                <div class="bg-blue-50 dark:bg-blue-900/20 p-3 sm:p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                                    <div class="text-xs sm:text-sm font-medium text-blue-800 dark:text-blue-300">Total Pesanan Dicek</div>
+                                    <div class="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="orders.filter(o => o.status === 'cek').length"></div>
+                                </div>
+                                <div class="bg-green-50 dark:bg-green-900/20 p-3 sm:p-4 rounded-lg border border-green-200 dark:border-green-800">
+                                    <div class="text-xs sm:text-sm font-medium text-green-800 dark:text-green-300">Total Pesanan Selesai</div>
+                                    <div class="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400" x-text="orders.filter(o => o.status === 'finish').length"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Financial Summary -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                <div class="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">Total Pendapatan</div>
+                                    <div class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white" x-text="'Rp ' + orders.reduce((sum, o) => sum + o.total_price, 0).toLocaleString('id-ID')"></div>
+                                </div>
+                                <div class="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">Rata-rata Harga</div>
+                                    <div class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white" x-text="'Rp ' + (orders.length > 0 ? Math.round(orders.reduce((sum, o) => sum + o.total_price, 0) / orders.length).toLocaleString('id-ID') : 0)"></div>
+                                </div>
+                                <div class="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg">
+                                    <div class="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300">Total RIM</div>
+                                    <div class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white" x-text="orders.reduce((sum, o) => sum + o.rim_quantity, 0)"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Charts Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                                <div class="bg-white dark:bg-gray-700 p-3 sm:p-4 rounded-lg shadow">
+                                    <div class="chart-container">
+                                        <canvas id="statusChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="bg-white dark:bg-gray-700 p-3 sm:p-4 rounded-lg shadow">
+                                    <div class="chart-container">
+                                        <canvas id="cityChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="bg-white dark:bg-gray-700 p-3 sm:p-4 rounded-lg shadow">
+                                    <div class="chart-container">
+                                        <canvas id="documentChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="bg-white dark:bg-gray-700 p-3 sm:p-4 rounded-lg shadow">
+                                    <div class="chart-container">
+                                        <canvas id="monthlyChart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="bg-white dark:bg-gray-700 p-3 sm:p-4 rounded-lg shadow md:col-span-2">
+                                    <div class="chart-container">
+                                        <canvas id="revenueChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal untuk Tambah/Edit Pesanan -->
+                <div x-show="showModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50" x-cloak>
+                    <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl m-4">
+                        <div class="p-4 sm:p-6">
+                            <div class="flex justify-between items-center pb-3">
+                                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white" x-text="editingOrder && editingOrder.id ? 'Edit Pesanan' : 'Tambah Pesanan Baru'"></h3>
+                                <button @click="showModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <form @submit.prevent="saveOrder">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No. Pesanan</label>
+                                        <input type="text" x-model="editingOrder.order_number" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tanggal</label>
+                                        <input type="date" x-model="editingOrder.date" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jumlah RIM</label>
+                                        <input type="number" x-model="editingOrder.rim_quantity" @input="editingOrder.total_price = editingOrder.rim_quantity * editingOrder.unit_price" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kota</label>
+                                        <input type="text" x-model="editingOrder.city" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Jenis Dokumen</label>
+                                        <input type="text" x-model="editingOrder.document_type" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Harga Satuan</label>
+                                        <input type="number" x-model="editingOrder.unit_price" @input="editingOrder.total_price = editingOrder.rim_quantity * editingOrder.unit_price" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm" required>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tanggal Masuk</label>
+                                        <input type="date" x-model="editingOrder.entry_date" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Batas Cetak</label>
+                                        <input type="date" x-model="editingOrder.print_deadline" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm">
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Catatan</label>
+                                    <textarea x-model="editingOrder.notes" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"></textarea>
+                                </div>
+                                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 rounded-lg mb-4">
+                                    <div class="flex justify-between">
+                                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Total Harga:</span>
+                                        <span class="text-sm font-bold text-gray-900 dark:text-white" x-text="'Rp ' + Number(editingOrder.rim_quantity * editingOrder.unit_price).toLocaleString('id-ID')"></span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-end space-x-3">
+                                    <button type="button" @click="showModal = false" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors text-sm">
+                                        Batal
+                                    </button>
+                                    <button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm">
+                                        Simpan
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Detail Pesanan -->
+                <div x-show="showDetailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50" x-cloak>
+                    <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl m-4">
+                        <div class="p-4 sm:p-6">
+                            <div class="flex justify-between items-center pb-3">
+                                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Detail Pesanan</h3>
+                                <button @click="showDetailsModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div x-show="selectedOrder" class="space-y-3 sm:space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">No. Pesanan</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.order_number"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Tanggal</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.date"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Jumlah RIM</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.rim_quantity"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Kota</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.city"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Jenis Dokumen</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.document_type"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Total Harga</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="'Rp ' + Number(selectedOrder?.total_price).toLocaleString('id-ID')"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Tanggal Masuk</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.entry_date || '-'"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Batas Cetak</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.print_deadline || '-'"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Tanggal CEK</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.cek_date || '-'"></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Tanggal Selesai</p>
+                                        <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.finish_date || '-'"></p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Catatan</p>
+                                    <p class="text-sm sm:text-base font-medium" x-text="selectedOrder?.notes || '-'"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white dark:bg-gray-800 shadow-md py-3 sm:py-4">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <p class="text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                    &copy; 2023 Sistem Pendataan Pesanan. All rights reserved.
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        function exportToExcel() {
+            window.location.href = '/api/export/excel';
+        }
+    </script>
+</body>
+</html>
